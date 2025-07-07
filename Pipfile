@@ -1,0 +1,29 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+beautifulsoup4 = "*"
+selenium = "==4.10.0"
+chromedriver-binary-auto = "*"
+pydantic = "*"
+pydantic_settings = "*"
+dotenv = "*"
+setuptools = "*"
+prefect = "*"
+pandas = "*"
+
+[dev-packages]
+black = "*"
+tox = "*"
+flake8 = "*"
+mypy = "*"
+pylint = "*"
+pytest = "*"
+coverage = "*"
+pre-commit = "*"
+types-selenium = "*"
+
+[requires]
+python_version = "3.13"

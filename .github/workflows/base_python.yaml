@@ -1,0 +1,83 @@
+name: Base Python CI Checks
+on:
+  # https://help.github.com/en/actions/reference/events-that-trigger-workflows#pull-request-event-pull_request
+  pull_request:
+    types: [opened, synchronize, reopened]
+    # Only run for PRs with main as base branch
+    branches:
+      - main
+
+env:
+  # Force pipenv to create virtualenv in .venv dir (relative to repo's root dir)
+  PIPENV_VENV_IN_PROJECT: 1
+
+jobs:
+  lint-python:
+    name: Run style and type checks
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout a copy of the repo
+      - uses: actions/checkout@v2
+
+      - name: Setup Python
+        id: python-setup
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.13
+
+      # Cache virtualenv dir with Pipenv-installed dependencies
+      # https://github.com/actions/cache
+      - uses: actions/cache@v4
+        name: cache
+        id: pipenv-cache
+        with:
+          path: .venv
+          key: ${{ runner.os }}-${{ steps.python-setup.outputs.python-version }}-${{ hashFiles('Pipfile.lock') }}
+
+      # This step started to break on version 2024.3.1 and the following error:
+      # ModuleNotFoundError: No module named 'pipenv.vendor.pipdeptree._detect_env'
+      - name: Install Pipenv Version
+        run: pip install pipenv==2024.3.0
+
+      - name: Install dev packages
+        if: steps.pipenv-cache.outputs.cache-hit != 'true'
+        run: pipenv install --dev
+
+      - name: Run linters
+        run: pipenv run tox -e lint
+
+      - name: Run type checker
+        run: pipenv run tox -e type-check
+
+  test-python:
+    name: Run tests
+    runs-on: ubuntu-latest
+    steps:
+      # Checkout a copy of the repo
+      - uses: actions/checkout@v2
+
+      - name: Setup Python
+        id: python-setup
+        uses: actions/setup-python@v5
+        with:
+          python-version: 3.13
+
+      # Cache virtualenv dir with Pipenv-installed dependencies
+      # https://github.com/actions/cache
+      - uses: actions/cache@v4
+        id: pipenv-cache
+        with:
+          path: .venv
+          key: ${{ runner.os }}-${{ steps.python-setup.outputs.python-version }}-${{ hashFiles('Pipfile.lock') }}
+
+      # This step started to break on version 2024.3.1 and the following error:
+      # ModuleNotFoundError: No module named 'pipenv.vendor.pipdeptree._detect_env'
+      - name: Install Specific Pipenv Version
+        run: pip install pipenv==2024.3.0
+
+      - name: Install dev packages
+        if: steps.pipenv-cache.outputs.cache-hit != 'true'
+        run: pipenv install --dev
+
+      - name: Run unit tests + get coverage
+        run: pipenv run tox -e coverage

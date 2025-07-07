@@ -1,0 +1,8 @@
+- repo: local
+  hooks:
+    - id: sync-pipfile-requirements
+      name: sync-pipfile-requirements
+      entry: bash -c 'pipenv run pip freeze > requirements.txt && exit 1'
+      language: system
+      types: [python]
+      pass_filenames: false

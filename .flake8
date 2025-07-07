@@ -1,0 +1,30 @@
+[flake8]
+exclude = .*,__pycache__,src/apiclient/generated
+
+extend-ignore =
+    # See https://github.com/PyCQA/pycodestyle/issues/373
+    E203,
+    # Conflicts with Black's formatting rule for newlines after a function docstring:
+    # https://github.com/python/black#empty-lines
+    D202,
+    # Disable overly aggressive trailing comma check, which actually
+    # introduces undesired functional changes in some cases
+    # https://github.com/PyCQA/flake8-commas#errors
+    C812,
+
+# Recommend matching the black default line length of 88,
+# rather than the flake8 default of 79:
+max-line-length = 88
+
+# List top-level packages under src directory to allow application-local packages to be
+# correctly identified
+# Supported styles documented here: https://github.com/PyCQA/flake8-import-order#styles
+import-order-style = pycharm
+application-import-names =
+    src
+    tests
+
+classmethod-decorators =
+    classmethod
+    validator
+    root_validator

@@ -1,0 +1,78 @@
+services:
+  ### Prefect Database
+  database:
+    image: postgres:alpine
+    restart: always
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=prefect
+    expose:
+      - 5432
+    volumes: 
+      - db:/var/lib/postgresql/data
+
+  ### Prefect Server API and UI
+  server:
+    image: prefecthq/prefect:3-python3.13
+    restart: always
+    volumes:
+      - prefect:/root/.prefect
+    entrypoint: ["/opt/prefect/entrypoint.sh", "prefect", "server", "start"]
+    environment:
+      - PREFECT_UI_URL=http://127.0.0.1:4200/api
+      - PREFECT_API_URL=http://127.0.0.1:4200/api
+      - PREFECT_SERVER_API_HOST=0.0.0.0
+      - PREFECT_API_DATABASE_CONNECTION_URL=postgresql+asyncpg://postgres:postgres@database:5432/prefect
+    ports:
+      - 4200:4200
+    depends_on:
+      - database
+
+  ## Prefect Worker
+  worker:
+    image: prefecthq/prefect:3-python3.13
+    restart: always
+    entrypoint: ["/opt/prefect/entrypoint.sh", "prefect", "worker", "start", "-p", "local-queue"]
+    environment:
+      - PREFECT_API_URL=http://server:4200/api
+
+  ### Prefect CLI
+  cli:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    platform: linux/amd64
+    command: python src/pipeline/flows/watchlist/watchlist.py
+    depends_on:
+      - selenium-hub
+      - chrome
+    working_dir: "/root/pipelines"
+    volumes:
+      - "./:/root/pipelines"
+    environment:
+      - PREFECT_API_URL=http://server:4200/api
+
+  ### Selenium
+  selenium-hub:
+    image: selenium/hub:4.21.0
+    container_name: selenium-hub
+    ports:
+      - "4444:4444"
+
+  chrome:
+    image: ghcr.io/browserless/chromium:v2.32.1
+    shm_size: 2gb
+    depends_on:
+      - selenium-hub
+    environment:
+      - SE_EVENT_BUS_HOST=selenium-hub
+      - SE_EVENT_BUS_PUBLISH_PORT=4442
+      - SE_EVENT_BUS_SUBSCRIBE_PORT=4443
+
+volumes:
+  prefect:
+  db:
+networks:
+  default:
+    name: prefect-network
