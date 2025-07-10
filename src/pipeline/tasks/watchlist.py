@@ -92,7 +92,9 @@ def enrich_data_tmdb(scraper: LetterboxdScraper) -> None:
 
 
 @task
-def save_dataframe(scraper: LetterboxdScraper, root: Optional[str] = None) -> Optional[str]:
+def save_dataframe(
+    scraper: LetterboxdScraper, root: Optional[str] = None
+) -> Optional[str]:
     """Handle the saving of the scraped movies.
 
     Args:
@@ -104,4 +106,4 @@ def save_dataframe(scraper: LetterboxdScraper, root: Optional[str] = None) -> Op
     logger = get_run_logger()
     logger.info("saving the dataframe ...")
 
-    scraper.save_to_db(root=root)
+    return scraper.save_to_db(root=root)

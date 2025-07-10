@@ -28,6 +28,7 @@ pytest = "*"
 coverage = "*"
 pre-commit = "*"
 types-selenium = "*"
+types-requests = "*"
 
 [requires]
 python_version = "3.13"

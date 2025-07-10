@@ -83,7 +83,7 @@ class LetterboxdScraper(object):
             self.logger.info("creating the headless driver")
 
         service = Service(executable_path=driver_path)
-        driver = webdriver.Chrome(service=service, options=options)
+        driver = webdriver.Chrome(service=service, options=options)  # type: ignore[call-arg]  # noqa: E501
         return driver
 
     def get_watchlist_pages(self) -> List[int]:
@@ -161,12 +161,12 @@ class LetterboxdScraper(object):
         """
         if self.movies is None:
             raise RuntimeError(
-                "self.movies has not been set -- please run self.scrape_watchlist() first"
+                "self.movies has not been set -- please run self.scrape_watchlist() first"  # noqa: E501
             )
 
         extra_data = []
         tmdb_ids = self.movies["tmdb_id"]
-        for id in tmdb_ids:
+        for tmdb_id in tmdb_ids:
             try:
                 temp = {}
                 headers = {
@@ -174,19 +174,19 @@ class LetterboxdScraper(object):
                     "Authorization": f"Bearer {self.settings.tmdb_access_token}",
                 }
                 response = requests.get(
-                    f"{self.base_url}/movie/{id}?language=en-US", headers=headers
+                    f"{self.base_url}/movie/{tmdb_id}?language=en-US", headers=headers
                 )
                 if response.status_code != 200:
                     self.logger.error(f"request failed with {response.text}")
                     continue
-                temp["tmdb_id"] = id
+                temp["tmdb_id"] = tmdb_id
                 resp = json.loads(response.text)
                 temp["runtime"] = resp["runtime"]
                 temp["poster_path"] = resp["poster_path"]
                 temp["vote_average"] = resp["vote_average"]
                 extra_data.append(temp)
             except Exception as e:
-                self.logger.error(f"failed parsing {id} - {e}")
+                self.logger.error(f"failed parsing {tmdb_id} - {e}")
 
         extra_df = pd.DataFrame(extra_data)
         self.enriched = self.movies.merge(extra_df, on="tmdb_id", how="inner")
@@ -201,11 +201,13 @@ class LetterboxdScraper(object):
         """
         if self.enriched is None:
             raise RuntimeError(
-                "self.enriched has not been set -- please run self.scrape_watchlist() first"
+                "self.enriched has not been set -- please run self.scrape_watchlist() first"  # noqa: E501
             )
         if self.settings.local and root is None:
             raise ValueError("running locally, but root has not been set")
         if self.settings.local:
+            if root is None:
+                root = "outputs"
             subdir = str(int(time.time()))
             if os.path.exists(os.path.join(root, "current.csv")):
                 self.logger.info("current database exists")
@@ -233,7 +235,7 @@ class LetterboxdScraper(object):
                 old_frame = pd.read_sql("SELECT * FROM movies", con=conn)
 
             if len(old_frame) != 0:
-                self.logger.info(f"dropping the data from the old table")
+                self.logger.info("dropping the data from the old table")
                 with engine.connect() as conn:
                     pd.read_sql_query("TRUNCATE TABLE movies;", con=conn)
 
