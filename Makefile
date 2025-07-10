@@ -11,11 +11,11 @@ test:
 .PHONY: test
 
 stop-server:
-	docker compose down --volumes server worker database selenium-hub chrome
+	docker compose down --volumes server worker database
 .PHONY: stop-server
 
 start-server: stop-server
-	docker compose up -d server worker database selenium-hub chrome --build
+	docker compose up -d server worker database --build
 .PHONY: start-server
 
 start-prefect: start-server

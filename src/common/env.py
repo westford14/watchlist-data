@@ -15,8 +15,7 @@ class Settings(BaseSettings):
         username (str): letterboxd username to scrape
         tmdb_access_token (str): the access token for TMDB
         tmdb_api_key (str): the TMDB API key
-        selenium_port (str): the selenium port
-        selenium_host (str): the selenium host
+        database_url (str): the database URL
         local (bool): if it is being run locally / with a local docker instance
         default_log_level (int): default output level given to loggers.
             Can be integer or predefined levels in logging (e.g. INFO, DEBUG)
@@ -25,8 +24,7 @@ class Settings(BaseSettings):
     username: str
     tmdb_access_token: str
     tmdb_api_key: str
-    selenium_port: str = "4444"
-    selenium_host: str = "selenium-hub"
+    database_url: str
     local: bool = True
     default_log_level: int = logging.INFO
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
@@ -94,6 +92,28 @@ class Settings(BaseSettings):
                 f"tmdb_api_key must be of type str not {type(tmdb_api_key)}"
             )
         return tmdb_api_key
+
+    @field_validator("database_url")
+    @classmethod
+    def validate_database_url(
+        cls,
+        database_url: str,
+    ) -> str:
+        """
+        Validate the database_url paramater.
+
+        Args:
+            database_url (str): the database_url paramater
+        Returns:
+            The validated database_url paramater.
+        Raises:
+            AttributeError if the database_url parameter is not a bool
+        """
+        if not isinstance(database_url, str):
+            raise AttributeError(
+                f"database_url must be of type str not {type(database_url)}"
+            )
+        return database_url
 
     @field_validator("local")
     @classmethod

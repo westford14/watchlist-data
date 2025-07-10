@@ -13,6 +13,10 @@ dotenv = "*"
 setuptools = "*"
 prefect = "*"
 pandas = "*"
+sqlalchemy = "*"
+ratelimit = "*"
+psycopg2 = "*"
+psycopg2-binary = "*"
 
 [dev-packages]
 black = "*"

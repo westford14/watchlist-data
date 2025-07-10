@@ -1,15 +1,21 @@
 """Letterboxd scraper."""
 
+import json
+import os
 import time
 from dataclasses import dataclass
-from typing import List, no_type_check
+from typing import List, Optional, no_type_check
 
 import chromedriver_binary
+import pandas as pd
+import requests
 from bs4 import BeautifulSoup
+from ratelimit import limits
 from selenium import webdriver
 from selenium.webdriver.chrome.webdriver import WebDriver
 from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.chrome.options import Options
+from sqlalchemy import create_engine
 
 from src.common.env import Settings
 from src.common.logger import get_logger, LoggingContext
@@ -21,7 +27,7 @@ logger = get_logger(__name__)
 @dataclass
 class Movie:
     name: str
-    id: int
+    letterboxd_id: int
     url: str
     tmdb_id: int
 
@@ -46,6 +52,7 @@ class LetterboxdScraper(object):
 
         Raises:
         """
+        self.base_url = "https://api.themoviedb.org/3"
         self.logger = logger
         self.settings = settings
         self.driver = self.__create_driver()
@@ -55,6 +62,8 @@ class LetterboxdScraper(object):
 
         with LoggingContext({"url": self.watchlist_url}):
             self.logger.info("getting the watchlist URL")
+        self.movies: Optional[pd.DataFrame] = None
+        self.enriched: Optional[pd.DataFrame] = None
 
     def __create_driver(self) -> WebDriver:
         """Create the selenium webdriver.
@@ -130,7 +139,7 @@ class LetterboxdScraper(object):
 
                 movie = Movie(
                     name=film.div.attrs["data-film-slug"],
-                    id=int(film.div.attrs["data-film-id"]),
+                    letterboxd_id=int(film.div.attrs["data-film-id"]),
                     url=film.div.attrs["data-film-link"],
                     tmdb_id=tmdb_id,
                 )
@@ -138,3 +147,99 @@ class LetterboxdScraper(object):
             except Exception as e:
                 self.logger.error(f"could not parse film due to: {e}")
         return movies
+
+    @limits(calls=40, period=2)
+    def enrich_movies(self) -> None:
+        """Enrich the data from letterboxd with data from TMDB.
+
+        Args:
+            None
+        Returns:
+            None
+        Raises:
+            RuntimeError if self.movies is not set
+        """
+        if self.movies is None:
+            raise RuntimeError(
+                "self.movies has not been set -- please run self.scrape_watchlist() first"
+            )
+
+        extra_data = []
+        tmdb_ids = self.movies["tmdb_id"]
+        for id in tmdb_ids:
+            try:
+                temp = {}
+                headers = {
+                    "accept": "application/json",
+                    "Authorization": f"Bearer {self.settings.tmdb_access_token}",
+                }
+                response = requests.get(
+                    f"{self.base_url}/movie/{id}?language=en-US", headers=headers
+                )
+                if response.status_code != 200:
+                    self.logger.error(f"request failed with {response.text}")
+                    continue
+                temp["tmdb_id"] = id
+                resp = json.loads(response.text)
+                temp["runtime"] = resp["runtime"]
+                temp["poster_path"] = resp["poster_path"]
+                temp["vote_average"] = resp["vote_average"]
+                extra_data.append(temp)
+            except Exception as e:
+                self.logger.error(f"failed parsing {id} - {e}")
+
+        extra_df = pd.DataFrame(extra_data)
+        self.enriched = self.movies.merge(extra_df, on="tmdb_id", how="inner")
+
+    def save_to_db(self, root: Optional[str] = None) -> Optional[str]:
+        """Save the movies to the DB.
+
+        Args:
+            None
+        Returns:
+            Optional[str]
+        """
+        if self.enriched is None:
+            raise RuntimeError(
+                "self.enriched has not been set -- please run self.scrape_watchlist() first"
+            )
+        if self.settings.local and root is None:
+            raise ValueError("running locally, but root has not been set")
+        if self.settings.local:
+            subdir = str(int(time.time()))
+            if os.path.exists(os.path.join(root, "current.csv")):
+                self.logger.info("current database exists")
+            else:
+                self.logger.info("current database does not exists")
+            updated = self.enriched.copy()
+            try:
+                self.logger.info(f"creating output directory: {root}/{subdir}")
+                os.makedirs(os.path.join(root, subdir))
+            except FileExistsError:
+                self.logger.warning(f"output_path: {root}/{subdir} already exists")
+
+            updated["username"] = self.settings.username
+            self.logger.info(f"saving dataframe to: {root}/{subdir}/current.csv")
+            updated.to_csv(os.path.join(root, subdir, "current.csv"), index=False)
+            self.logger.info(f"saving dataframe to: {root}/current.csv")
+            updated.to_csv(os.path.join(root, "current.csv"), index=False)
+            return os.path.join(root, subdir, "current.csv")
+        else:
+            self.logger.info("creating the engine connection")
+            engine = create_engine(self.settings.database_url)
+
+            self.logger.info("querying the database")
+            with engine.connect() as conn:
+                old_frame = pd.read_sql("SELECT * FROM movies", con=conn)
+
+            if len(old_frame) != 0:
+                self.logger.info(f"dropping the data from the old table")
+                with engine.connect() as conn:
+                    pd.read_sql_query("TRUNCATE TABLE movies;", con=conn)
+
+            updated = self.enriched.copy()
+            self.logger.info("saving the new dataframe to the database")
+            with engine.connect() as conn:
+                updated.to_sql("movies", con=conn, if_exists="append", index=False)
+
+            return None

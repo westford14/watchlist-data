@@ -9,8 +9,9 @@ from src.pipeline.tasks.watchlist import (
     gather_pages,
     instantiate_letterboxd,
     watchlist_scrape,
-    combine_into_dataframe,
     save_dataframe,
+    enrich_data_tmdb,
+    combine_into_dataframe,
 )
 from src.pipeline.common.splitter import split_list
 
@@ -18,6 +19,7 @@ from src.pipeline.common.splitter import split_list
 class WatchlistParameters(BaseModel):
     username: str
     local: bool = True
+    root: str = "./outputs"
 
 
 @flow(flow_run_name=generate_flow_run_name)
@@ -55,13 +57,19 @@ def letterboxd_watchlist(watchlist_parameters: WatchlistParameters) -> None:
         logger.info(f"page_set: {page_set} scraped")
         scraped_movies.extend(movies)
 
-    logger.info(f"combining the {len(scraped_movies)} into a pd.DataFrame")
+    logger.info("combining into a dataframe")
     frame = combine_into_dataframe(movies=scraped_movies)
+    scraper.movies = frame
+
+    logger.info("enriching the data")
+    enrich_data_tmdb(scraper=scraper)
 
     logger.info("handling the saving of the pd.DataFrame")
-    output_path = save_dataframe(frame=frame, settings=settings)
+    output_path = save_dataframe(scraper=scraper, root=watchlist_parameters.root)
     if output_path is not None:
-        logger.info(f"DB saved to {output_path}")
+        logger.info(f"movies saved to {output_path}")
+    else:
+        logger.info("movies saved to the backend DB")
 
 
 if __name__ == "__main__":
