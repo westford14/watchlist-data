@@ -7,7 +7,7 @@ type-check:
 .PHONY: type-check
 
 test:
-	pipenv run tox -e coverage
+	pipenv run tox -e unit
 .PHONY: test
 
 stop-server:
