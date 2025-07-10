@@ -1,7 +1,5 @@
 """Watchlist flow tasks."""
 
-import os
-import time
 from dataclasses import asdict
 from typing import List, Optional
 
@@ -79,42 +77,33 @@ def combine_into_dataframe(movies: List[Movie]) -> pd.DataFrame:
     return pd.DataFrame([asdict(x) for x in movies])
 
 
+@task(cache_policy=NO_CACHE)
+def enrich_data_tmdb(scraper: LetterboxdScraper) -> None:
+    """Enrich the data using the TMDB API.
+
+    Args:
+       scraper (LetterboxdScraper): the instantiated Letterboxd scraper
+    Returns:
+        None
+    """
+    logger = get_run_logger()
+    logger.info("enriching the data")
+    scraper.enrich_movies()
+
+
 @task
-def save_dataframe(frame: pd.DataFrame, settings: Settings) -> Optional[str]:
+def save_dataframe(
+    scraper: LetterboxdScraper, root: Optional[str] = None
+) -> Optional[str]:
     """Handle the saving of the scraped movies.
 
     Args:
-        frame (pd.DataFrame): the dataframe to save
-        settings (Settings): information about where to save
+        scraper (LetterboxdScraper): the instantiated Letterboxd scraper
+        root (Optional[str]): if this is local, the root to save to
     Returns:
         Optional[str]
     """
     logger = get_run_logger()
     logger.info("saving the dataframe ...")
 
-    if settings.local:
-        logger.info("saving locally")
-        root = "./outputs"
-        subdir = str(int(time.time()))
-        if os.path.exists(os.path.join(root, "current.csv")):
-            logger.info("current database exists")
-            old_frame = pd.read_csv(os.path.join(root, "current.csv"))
-            new_movies = frame[~frame["id"].isin(old_frame["id"].values.tolist())]
-            updated = pd.concat([new_movies, old_frame])
-        else:
-            logger.info("current database does not exists")
-            updated = frame.copy()
-        try:
-            logger.info(f"creating output directory: {root}/{subdir}")
-            os.makedirs(os.path.join(root, subdir))
-        except FileExistsError:
-            logger.warning(f"output_path: {root}/{subdir} already exists")
-
-        logger.info(f"saving dataframe to: {root}/{subdir}/current.csv")
-        updated.to_csv(os.path.join(root, subdir, "current.csv"), index=False)
-        logger.info(f"saving dataframe to: {root}/current.csv")
-        updated.to_csv(os.path.join(root, "current.csv"), index=False)
-        return os.path.join(root, subdir, "current.csv")
-    else:
-        logger.info("not covered yet ...")
-        return None
+    return scraper.save_to_db(root=root)

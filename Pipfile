@@ -13,6 +13,10 @@ dotenv = "*"
 setuptools = "*"
 prefect = "*"
 pandas = "*"
+sqlalchemy = "*"
+ratelimit = "*"
+psycopg2 = "*"
+psycopg2-binary = "*"
 
 [dev-packages]
 black = "*"
@@ -24,6 +28,7 @@ pytest = "*"
 coverage = "*"
 pre-commit = "*"
 types-selenium = "*"
+types-requests = "*"
 
 [requires]
 python_version = "3.13"

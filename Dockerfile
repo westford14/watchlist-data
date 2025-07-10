@@ -5,14 +5,19 @@ RUN apt-get update && \
     apt-get install -y software-properties-common && \
     add-apt-repository ppa:deadsnakes/ppa && \
     apt-get update && \
-    apt-get install -y python3.13 python3.13-venv curl && \
+    apt-get install -y python3.13 python3.13-dev python3.13-venv curl && \
     curl -sS https://bootstrap.pypa.io/get-pip.py | python3.13 && \
     apt-get clean && rm -rf /var/lib/apt/lists/*
 
 FROM base AS python-deps
 
 RUN pip install pipenv
-RUN apt-get update && apt-get install -y --no-install-recommends gcc pkg-config cmake build-essential
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  gcc \
+  pkg-config \
+  cmake \
+  build-essential \
+  libpq-dev
 
 COPY Pipfile .
 COPY Pipfile.lock .
