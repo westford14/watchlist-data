@@ -6,16 +6,18 @@ import time
 from dataclasses import dataclass
 from typing import List, Optional, no_type_check
 
-import chromedriver_binary
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 from ratelimit import limits
 from selenium import webdriver
-from selenium.webdriver.chrome.webdriver import WebDriver
-from selenium.webdriver.chrome.service import Service
-from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.firefox.webdriver import WebDriver
+from selenium.webdriver.firefox.options import Options
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
 from sqlalchemy import create_engine
+from sqlalchemy.sql import text as sa_text
 
 from src.common.env import Settings
 from src.common.logger import get_logger, LoggingContext
@@ -55,7 +57,6 @@ class LetterboxdScraper(object):
         self.base_url = "https://api.themoviedb.org/3"
         self.logger = logger
         self.settings = settings
-        self.driver = self.__create_driver()
         self.watchlist_url = (
             f"https://letterboxd.com/{self.settings.username}/watchlist/"
         )
@@ -77,13 +78,10 @@ class LetterboxdScraper(object):
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
 
-        driver_path = chromedriver_binary.chromedriver_filename
-
         with LoggingContext({"options": options}):
             self.logger.info("creating the headless driver")
 
-        service = Service(executable_path=driver_path)
-        driver = webdriver.Chrome(service=service, options=options)  # type: ignore[call-arg]  # noqa: E501
+        driver = webdriver.Firefox(options=options)  # type: ignore[call-arg]  # noqa: E501
         return driver
 
     def get_watchlist_pages(self) -> List[int]:
@@ -93,11 +91,20 @@ class LetterboxdScraper(object):
             List[int] of the pages to scrape
         """
         self.logger.info("gathering the number of watchlist pages ...")
-        self.driver.get(self.watchlist_url)
+        driver = self.__create_driver()
+        driver.get(self.watchlist_url)
 
-        soup = BeautifulSoup(self.driver.page_source, "html.parser")
+        try:
+            WebDriverWait(driver, 30).until(
+                EC.presence_of_element_located((By.ID, "content-nav"))
+            )
+        except Exception as e:
+            self.logger.error(f"could not find content-nav: {e}")
+
+        soup = BeautifulSoup(driver.page_source, "html.parser")
         pages = soup.find_all("li", class_="paginate-page")
         last_page = int(pages[-1].text)
+        driver.quit()
 
         self.logger.info(f"found {pages} to scrape through")
         return list(range(1, last_page + 1))
@@ -112,29 +119,32 @@ class LetterboxdScraper(object):
         with LoggingContext({"page": page}):
             self.logger.info(f"parsing watchlist page {page}")
 
-        self.driver.get(f"{self.watchlist_url}/page/{page}/")
+        driver = self.__create_driver()
+        driver.get(f"{self.watchlist_url}/page/{page}/")
         time.sleep(0.5)
 
         self.logger.info("parsing the page ...")
-        soup = BeautifulSoup(self.driver.page_source, "html.parser")
+        soup = BeautifulSoup(driver.page_source, "html.parser")
 
         self.logger.info("parsing the poster containers")
         films = soup.find_all("li", class_="poster-container")
 
         self.logger.info(f"found {len(films)} ... parsing ... ")
+        driver.quit()
 
+        film_driver = self.__create_driver()
         movies = []
         for film in films:
             try:
                 self.logger.info(
                     f"gathering the TMDB info for {film.div.attrs["data-film-slug"]}"
                 )
-                self.driver.get(
+                film_driver.get(
                     f"https://letterboxd.com/film/{film.div.attrs["data-film-slug"]}/"
                 )
                 time.sleep(0.5)
 
-                soup = BeautifulSoup(self.driver.page_source, "html.parser")
+                soup = BeautifulSoup(film_driver.page_source, "html.parser")
                 tmdb_id = int(soup.find("body")["data-tmdb-id"])
 
                 movie = Movie(
@@ -146,6 +156,7 @@ class LetterboxdScraper(object):
                 movies.append(movie)
             except Exception as e:
                 self.logger.error(f"could not parse film due to: {e}")
+        film_driver.quit()
         return movies
 
     @limits(calls=40, period=2)
@@ -191,13 +202,13 @@ class LetterboxdScraper(object):
         extra_df = pd.DataFrame(extra_data)
         self.enriched = self.movies.merge(extra_df, on="tmdb_id", how="inner")
 
-    def save_to_db(self, root: Optional[str] = None) -> Optional[str]:
+    def save_to_db(self, root: Optional[str] = None) -> pd.DataFrame:
         """Save the movies to the DB.
 
         Args:
             None
         Returns:
-            Optional[str]
+            pd.DataFrame
         """
         if self.enriched is None:
             raise RuntimeError(
@@ -225,7 +236,6 @@ class LetterboxdScraper(object):
             updated.to_csv(os.path.join(root, subdir, "current.csv"), index=False)
             self.logger.info(f"saving dataframe to: {root}/current.csv")
             updated.to_csv(os.path.join(root, "current.csv"), index=False)
-            return os.path.join(root, subdir, "current.csv")
         else:
             self.logger.info("creating the engine connection")
             engine = create_engine(self.settings.database_url)
@@ -237,11 +247,13 @@ class LetterboxdScraper(object):
             if len(old_frame) != 0:
                 self.logger.info("dropping the data from the old table")
                 with engine.connect() as conn:
-                    pd.read_sql_query("TRUNCATE TABLE movies;", con=conn)
+                    conn.execute(sa_text("TRUNCATE TABLE movies;"))
+                    conn.commit()
 
             updated = self.enriched.copy()
+            updated["username"] = self.settings.username
             self.logger.info("saving the new dataframe to the database")
             with engine.connect() as conn:
                 updated.to_sql("movies", con=conn, if_exists="append", index=False)
 
-            return None
+        return updated

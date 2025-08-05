@@ -10,6 +10,7 @@ from prefect.logging import get_run_logger
 
 from src.common.env import Settings
 from src.scraper.letterboxd import LetterboxdScraper, Movie
+from src.scraper.recommender_data import enrich_movies
 
 
 @task(cache_policy=NO_CACHE)
@@ -43,23 +44,20 @@ def gather_pages(scraper: LetterboxdScraper) -> List[int]:
 
 
 @task(cache_policy=NO_CACHE)
-def watchlist_scrape(scraper: LetterboxdScraper, pages: List[int]) -> List[Movie]:
+def watchlist_scrape(scraper: LetterboxdScraper, page: int) -> List[Movie]:
     """Scrape the watchlist information.
 
     Args:
         scraper (LetterboxdScraper): the scraper
-        pages (List[int]): the pages to scrape
+        pages (int): the page to scrape
     Returns:
         List[Movie]
     """
     logger = get_run_logger()
-    logger.info(f"gathering the scraping data from watchlist pages: {pages}")
+    logger.info(f"gathering the scraping data from watchlist page: {page}")
 
-    movies = []
-    for page in pages:
-        output = scraper.scrape_watchlist(page)
-        movies.extend(output)
-    return movies
+    output = scraper.scrape_watchlist(page)
+    return output  # type: ignore
 
 
 @task
@@ -94,16 +92,24 @@ def enrich_data_tmdb(scraper: LetterboxdScraper) -> None:
 @task
 def save_dataframe(
     scraper: LetterboxdScraper, root: Optional[str] = None
-) -> Optional[str]:
+) -> pd.DataFrame:
     """Handle the saving of the scraped movies.
 
     Args:
         scraper (LetterboxdScraper): the instantiated Letterboxd scraper
         root (Optional[str]): if this is local, the root to save to
     Returns:
-        Optional[str]
+        pd.DataFrame
     """
     logger = get_run_logger()
     logger.info("saving the dataframe ...")
 
     return scraper.save_to_db(root=root)
+
+
+@task
+def extra_watchlist_data(
+    watchlist_df: pd.DataFrame, settings: Settings
+) -> pd.DataFrame:
+    """Scrape extra data from the watchlist."""
+    return enrich_movies(watchlist_dataframe=watchlist_df, settings=settings)
