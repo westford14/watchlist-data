@@ -141,8 +141,9 @@ secrets/
 # Secrets Etc.
 .env
 
-# Outputs
+# Data
 outputs/
+data/
 
 # Debs
 *.deb
