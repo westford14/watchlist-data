@@ -127,7 +127,7 @@ class LetterboxdScraper(object):
         soup = BeautifulSoup(driver.page_source, "html.parser")
 
         self.logger.info("parsing the poster containers")
-        films = soup.find_all("li", class_="poster-container")
+        films = soup.find_all("li", class_="griditem")
 
         self.logger.info(f"found {len(films)} ... parsing ... ")
         driver.quit()
@@ -137,10 +137,10 @@ class LetterboxdScraper(object):
         for film in films:
             try:
                 self.logger.info(
-                    f"gathering the TMDB info for {film.div.attrs["data-film-slug"]}"
+                    f"gathering the TMDB info for {film.div.attrs["data-target-link"]}"
                 )
                 film_driver.get(
-                    f"https://letterboxd.com/film/{film.div.attrs["data-film-slug"]}/"
+                    f"https://letterboxd.com/{film.div.attrs["data-target-link"]}/"
                 )
                 time.sleep(0.5)
 
@@ -148,9 +148,9 @@ class LetterboxdScraper(object):
                 tmdb_id = int(soup.find("body")["data-tmdb-id"])
 
                 movie = Movie(
-                    name=film.div.attrs["data-film-slug"],
+                    name=film.div.attrs["data-item-name"],
                     letterboxd_id=int(film.div.attrs["data-film-id"]),
-                    url=film.div.attrs["data-film-link"],
+                    url=film.div.attrs["data-target-link"],
                     tmdb_id=tmdb_id,
                 )
                 movies.append(movie)
