@@ -242,12 +242,19 @@ class LetterboxdScraper(object):
 
             self.logger.info("querying the database")
             with engine.connect() as conn:
-                old_frame = pd.read_sql("SELECT * FROM movies", con=conn)
+                old_frame = pd.read_sql(
+                    f"SELECT * FROM movies WHERE username = '{self.settings.username}'",
+                    con=conn,
+                )
 
             if len(old_frame) != 0:
                 self.logger.info("dropping the data from the old table")
                 with engine.connect() as conn:
-                    conn.execute(sa_text("TRUNCATE TABLE movies;"))
+                    conn.execute(
+                        sa_text(
+                            f"DELETE FROM movies WHERE username = {self.settings.username};"  # noqa: E501
+                        )
+                    )
                     conn.commit()
 
             updated = self.enriched.copy()
